@@ -495,18 +495,118 @@ textarea#pasteCode {
 }
 #graph { display: block; width: 100%; height: 430px; touch-action: manipulation; }
 
-.edge { stroke: rgba(255, 255, 255, 0.17); stroke-width: 1; }
-.edge.is-cycle { stroke: rgba(255, 166, 87, 0.55); stroke-width: 1.4; stroke-dasharray: 4 3; }
-.edge.is-hot { stroke: rgba(94, 234, 212, 0.75); stroke-width: 1.7; }
+/* --- sinapsis --- */
+.edge {
+  fill: none;
+  stroke: rgba(140, 200, 220, 0.20);
+  stroke-width: 0.9;
+  transition: stroke 0.2s, stroke-width 0.2s, opacity 0.2s;
+}
+.edge.signal {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 1 17;
+  opacity: 0.42;
+  animation: signal-flow var(--dur, 2.8s) linear infinite;
+  animation-delay: var(--delay, 0s);
+}
+.edge.signal.hot { stroke: #9dfce9; stroke-width: 2; opacity: 0.85; }
+.edge.base.is-hot { stroke: rgba(94, 234, 212, 0.55); stroke-width: 1.3; }
+.edge.signal.signal-hot { stroke: #d6fff8; stroke-width: 2.6; opacity: 1; }
+.edge.signal.cycle { stroke: var(--alto); }
 
-.node circle { stroke: rgba(0, 0, 0, 0.6); stroke-width: 1; transition: r 0.15s, opacity 0.15s; cursor: pointer; }
-.node text { font-family: var(--mono); font-size: 8.6px; fill: var(--muted); pointer-events: none; }
-.node.is-entry circle { stroke: var(--accent); stroke-width: 1.8; }
-.node.is-cycle circle { stroke: var(--alto); stroke-width: 1.8; stroke-dasharray: 3 2; }
-.graph-wrap.is-focused .node { opacity: 0.22; }
-.graph-wrap.is-focused .edge { opacity: 0.12; }
+@keyframes signal-flow {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -54; }
+}
+
+.graph-wrap.no-flow .edge.signal { animation: none; opacity: 0.18; stroke-dasharray: none; }
+
+/* --- neuronas --- */
+.node { cursor: pointer; }
+.node .halo {
+  opacity: 0.55;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 0.25s;
+  animation: neuron-breathe var(--breath, 7s) ease-in-out var(--bdelay, 0s) infinite;
+}
+
+@keyframes neuron-breathe {
+  0%, 100% { opacity: 0.46; }
+  50% { opacity: 0.68; }
+}
+
+/* Las neuronas clave (entrada, ciclo) brillan un poco más de forma estable. */
+.node.is-entry .halo,
+.node.is-cycle .halo { opacity: 0.82; }
+.node .core {
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 0.8;
+  transition: filter 0.2s;
+}
+.node .ring {
+  fill: none;
+  stroke-width: 1;
+  opacity: 0.35;
+  transition: opacity 0.2s;
+}
+.node text {
+  font-family: var(--mono);
+  font-size: 8.6px;
+  fill: var(--muted);
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(7, 10, 15, 0.85);
+  stroke-width: 2.4px;
+}
+
+.node.is-entry .ring { stroke: var(--accent); stroke-width: 1.6; opacity: 0.85; }
+.node.is-cycle .ring { stroke: var(--alto); stroke-dasharray: 3 2; opacity: 0.9; }
+.node.is-hot .halo { opacity: 0.95; }
+.node.is-hot .ring { opacity: 0.9; }
+.node.is-hot .core { filter: brightness(1.35); }
+
+.node.is-firing .halo { animation: neuron-fire 1s ease-out; }
+.node.is-firing .core { animation: core-fire 1s ease-out; }
+.node.is-firing .ring { animation: ring-fire 1s ease-out; }
+
+@keyframes neuron-fire {
+  0% { transform: scale(1); opacity: 0.55; }
+  22% { transform: scale(1.9); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.55; }
+}
+@keyframes core-fire {
+  0%, 100% { filter: none; }
+  30% { filter: brightness(2.1) saturate(1.3); }
+}
+@keyframes ring-fire {
+  0% { opacity: 0.35; }
+  25% { opacity: 1; }
+  100% { opacity: 0.35; }
+}
+
+.graph-wrap.is-focused .node { opacity: 0.25; }
+.graph-wrap.is-focused .edge { opacity: 0.1; }
 .graph-wrap.is-focused .node.is-hot { opacity: 1; }
-.graph-wrap.is-focused .edge.is-hot { opacity: 1; }
+.graph-wrap.is-focused .edge.is-hot { opacity: 0.9; }
+.graph-wrap.no-flow .node.is-firing .halo,
+.graph-wrap.no-flow .node.is-firing .core,
+.graph-wrap.no-flow .node.is-firing .ring { animation: none; }
+
+.graph-hint {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  max-width: 230px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted-2);
+  text-align: right;
+  pointer-events: none;
+  opacity: 0.8;
+}
 
 .graph-controls { display: flex; gap: 2px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
 .seg {
@@ -830,6 +930,7 @@ textarea#pasteCode {
 }
 
 @media (max-width: 640px) {
+  .graph-hint { display: none; }
   body { font-size: 14.5px; }
   .topnav { gap: 14px; font-size: 12.5px; }
   .topnav a:not(.topnav-gh) { display: none; }

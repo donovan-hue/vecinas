@@ -137,9 +137,14 @@ Dos decisiones clave:
    (rutas relativas, extensiones omitidas, `index`, alias `@/`, módulos de Python con
    `src/`). Sobre ese grafo se buscan ciclos, huérfanos y nodos centrales.
 
-La interfaz dibuja el grafo con una simulación de fuerzas propia sobre SVG, permite
-colorear por riesgo o por lenguaje, filtrar hallazgos por severidad y abrir la ficha
-de cada archivo.
+La interfaz dibuja la red con una simulación de fuerzas propia sobre SVG, con estética
+de red neuronal: cada archivo es una neurona (halo, núcleo y anillo), cada dependencia
+una sinapsis curva y las señales viajan por ellas en bucle. Las neuronas más conectadas
+también disparan solas, y al hacer clic en una la señal se propaga a sus vecinas. Todo
+se puede pausar con el interruptor **Flujo** y respeta `prefers-reduced-motion`.
+
+Además: colorear por riesgo o por lenguaje, filtrar hallazgos por severidad y abrir la
+ficha de cada archivo.
 
 ---
 

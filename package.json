@@ -1,6 +1,6 @@
 {
   "name": "vecinas",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Analiza, visualiza y anticipa errores en el código de cualquier aplicación",
   "type": "module",
   "main": "server.js",

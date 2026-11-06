@@ -139,16 +139,19 @@
         <div class="card graph-card">
           <div class="card-head">
             <div>
-              <h3>Mapa de dependencias</h3>
+              <h3>Red de comunicación</h3>
               <p class="muted small" id="graphMeta"></p>
             </div>
             <div class="graph-controls">
               <button class="seg is-active" data-color="risk">Riesgo</button>
               <button class="seg" data-color="lang">Lenguaje</button>
+              <button class="seg is-active" id="flowToggle" aria-pressed="true"
+                title="Encender o apagar el flujo de señales entre archivos">Flujo</button>
             </div>
           </div>
           <div class="graph-wrap">
-            <svg id="graph" role="img" aria-label="Grafo de dependencias entre archivos"></svg>
+            <svg id="graph" role="img" aria-label="Red de dependencias entre archivos: cada punto es un archivo y cada línea una comunicación"></svg>
+            <p class="graph-hint" id="graphHint">Cada punto es un archivo; cada sinapsis, un import. Haz clic en una neurona para ver su ficha y propagar la señal.</p>
             <div class="tooltip" id="tooltip" hidden></div>
             <div class="legend" id="legend"></div>
           </div>
@@ -225,7 +228,7 @@
         <article>
           <span class="num">03</span>
           <h3>Teje las dependencias</h3>
-          <p>Resuelve cada import a un archivo real y dibuja el grafo. Ahí aparecen ciclos, nodos centrales y código que nadie llama.</p>
+          <p>Resuelve cada import a un archivo real y dibuja la red: cada archivo es una neurona y cada dependencia, una sinapsis por la que circula la señal.</p>
         </article>
         <article>
           <span class="num">04</span>

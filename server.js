@@ -184,7 +184,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/api/health') {
-      sendJson(res, 200, { ok: true, status: 'vivo', version: '1.0.0', uptime: process.uptime() });
+      sendJson(res, 200, { ok: true, status: 'vivo', version: '1.1.0', uptime: process.uptime() });
       return;
     }
     if (url.pathname === '/api/analyze' && req.method === 'POST') {

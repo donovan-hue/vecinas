@@ -9,6 +9,8 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const state = {
   report: null,
   graphColor: 'risk',
+  flow: true,
+  fireTimer: null,
   severity: 'todos',
   search: '',
   graphFocused: null,
@@ -143,6 +145,7 @@ function stopProgressWithError(message, hint) {
 
 function resetUi() {
   clearInterval(stepTimer);
+  stopSignals();
   state.report = null;
   state.payload = null;
   const progress = $('#progress');
@@ -405,24 +408,54 @@ function renderRiskList(report) {
 
 /* --------------------------------- grafo -------------------------------- */
 
-function layoutGraph(nodes, edges, width = 900, height = 430) {
-  const index = new Map(nodes.map((n, i) => [n.id, i]));
+const REDUCED_MOTION = typeof window.matchMedia === 'function'
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Reparto tipo "conectoma": cada carpeta tiende a ocupar una región y sus
+ * archivos se agrupan alrededor, con las sinapsis estirándolos entre sí.
+ */
+function layoutGraph(nodes, edges, width = 900, height = 430, radiusOf = () => 6) {
   const n = nodes.length;
-  const pos = nodes.map((node, i) => {
-    const angle = i * 2.399963;
-    const radius = 130 + (i % 7) * 18;
-    return { x: width / 2 + Math.cos(angle) * radius, y: height / 2 + Math.sin(angle) * radius };
+  const index = new Map(nodes.map((node, i) => [node.id, i]));
+
+  const areaOrder = [];
+  const areaIndex = new Map();
+  for (const node of nodes) {
+    const parts = node.id.split('/');
+    const area = parts.length > 1 ? parts[0] : '(raíz)';
+    if (!areaIndex.has(area)) { areaIndex.set(area, areaOrder.length); areaOrder.push(area); }
+  }
+
+  const orbit = Math.min(width, height) * 0.3;
+  const homes = areaOrder.map((_, i) => {
+    const angle = (i / Math.max(1, areaOrder.length)) * Math.PI * 2 - Math.PI / 2;
+    return {
+      x: width / 2 + Math.cos(angle) * orbit,
+      y: height / 2 + Math.sin(angle) * orbit * 0.86,
+    };
   });
 
-  const links = edges.map((e) => ({ s: index.get(e.source), t: index.get(e.target) }))
+  const pos = nodes.map((node, i) => {
+    const parts = node.id.split('/');
+    const area = parts.length > 1 ? parts[0] : '(raíz)';
+    const home = homes[areaIndex.get(area)] || { x: width / 2, y: height / 2 };
+    const angle = i * 2.399963;
+    const spread = 22 + (i % 6) * 9;
+    return { x: home.x + Math.cos(angle) * spread, y: home.y + Math.sin(angle) * spread };
+  });
+
+  const links = edges
+    .map((e) => ({ s: index.get(e.source), t: index.get(e.target) }))
     .filter((l) => l.s != null && l.t != null);
 
-  const area = width * height;
-  const k = Math.sqrt(area / Math.max(1, n)) * 0.62;
+  const degree = new Array(n).fill(0);
+  for (const l of links) { degree[l.s]++; degree[l.t]++; }
+
+  const k = Math.sqrt((width * height) / Math.max(1, n)) * 0.6;
   const iterations = n > 90 ? 220 : 320;
 
   for (let iter = 0; iter < iterations; iter++) {
-    // repulsión
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         let dx = pos[i].x - pos[j].x;
@@ -431,115 +464,222 @@ function layoutGraph(nodes, edges, width = 900, height = 430) {
         if (d2 < 1) { dx = (Math.random() - 0.5) * 2; dy = (Math.random() - 0.5) * 2; d2 = 4; }
         const dist = Math.sqrt(d2);
         const force = (k * k) / d2;
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        pos[i].x += fx; pos[i].y += fy;
-        pos[j].x -= fx; pos[j].y -= fy;
+        pos[i].x += (dx / dist) * force; pos[i].y += (dy / dist) * force;
+        pos[j].x -= (dx / dist) * force; pos[j].y -= (dy / dist) * force;
       }
     }
-    // atracción por aristas
     for (const l of links) {
       const dx = pos[l.t].x - pos[l.s].x;
       const dy = pos[l.t].y - pos[l.s].y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = (dist * dist) / k * 0.035;
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
-      pos[l.s].x += fx; pos[l.s].y += fy;
-      pos[l.t].x -= fx; pos[l.t].y -= fy;
+      const force = ((dist * dist) / k) * 0.03;
+      pos[l.s].x += (dx / dist) * force; pos[l.s].y += (dy / dist) * force;
+      pos[l.t].x -= (dx / dist) * force; pos[l.t].y -= (dy / dist) * force;
     }
-    // gravedad al centro
-    for (const p of pos) {
-      p.x += (width / 2 - p.x) * 0.012;
-      p.y += (height / 2 - p.y) * 0.012;
+    // las neuronas no se atraviesan: separación mínima según su tamaño
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const minDist = radiusOf(nodes[i]) + radiusOf(nodes[j]) + 9;
+        const dx = pos[j].x - pos[i].x;
+        const dy = pos[j].y - pos[i].y;
+        const dist = Math.hypot(dx, dy) || 0.01;
+        if (dist < minDist) {
+          const push = ((minDist - dist) / dist) * 0.5;
+          pos[i].x -= dx * push; pos[i].y -= dy * push;
+          pos[j].x += dx * push; pos[j].y += dy * push;
+        }
+      }
     }
-    // enfriar
-    if (iter % 40 === 0) for (const p of pos) { p.x += (Math.random() - 0.5) * 2; p.y += (Math.random() - 0.5) * 2; }
+    // gravedad hacia su región y hacia el centro del lienzo
+    for (let i = 0; i < n; i++) {
+      const parts = nodes[i].id.split('/');
+      const area = parts.length > 1 ? parts[0] : '(raíz)';
+      const home = homes[areaIndex.get(area)] || { x: width / 2, y: height / 2 };
+      pos[i].x += (home.x - pos[i].x) * 0.011;
+      pos[i].y += (home.y - pos[i].y) * 0.011;
+      const pull = degree[i] === 0 ? 0.028 : 0.004;
+      pos[i].x += (width / 2 - pos[i].x) * pull;
+      pos[i].y += (height / 2 - pos[i].y) * pull;
+    }
+    if (iter % 40 === 0) for (const p of pos) { p.x += (Math.random() - 0.5) * 1.6; p.y += (Math.random() - 0.5) * 1.6; }
   }
 
-  // ajustar al lienzo
-  const pad = 34;
-  const xs = pos.map((p) => p.x); const ys = pos.map((p) => p.y);
+  const pad = 38;
+  const xs = pos.map((p) => p.x);
+  const ys = pos.map((p) => p.y);
   const minX = Math.min(...xs); const maxX = Math.max(...xs);
   const minY = Math.min(...ys); const maxY = Math.max(...ys);
   const spanX = Math.max(1, maxX - minX); const spanY = Math.max(1, maxY - minY);
-  const scale = Math.min((width - pad * 2) / spanX, (height - pad * 2) / spanY);
+  // Escalas independientes: la red ocupa el lienzo completo en vez de dejar
+  // franjas vacías cuando la forma natural es más alta que ancha.
+  const scaleX = (width - pad * 2) / spanX;
+  const scaleY = (height - pad * 2) / spanY;
+  const uniform = Math.min(scaleX, scaleY);
+  const sx = Math.min(scaleX, uniform * 1.45);
+  const sy = Math.min(scaleY, uniform * 1.45);
+  const offsetX = (width - spanX * sx) / 2;
+  const offsetY = (height - spanY * sy) / 2;
   for (const p of pos) {
-    p.x = pad + (p.x - minX) * scale + ((width - pad * 2) - spanX * scale) / 2;
-    p.y = pad + (p.y - minY) * scale + ((height - pad * 2) - spanY * scale) / 2;
+    p.x = offsetX + (p.x - minX) * sx;
+    p.y = offsetY + (p.y - minY) * sy;
   }
 
   return { pos, links };
 }
 
+/** Curva de sinapsis: un bezier suave para que no parezca un diagrama de cajas. */
+function synapsePath(a, b, seed) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const bend = Math.min(52, dist * 0.2) * (seed % 2 === 0 ? 1 : -1);
+  const cx = (a.x + b.x) / 2 + (-dy / dist) * bend;
+  const cy = (a.y + b.y) / 2 + (dx / dist) * bend;
+  return `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+}
+
+function colorForNode(node) {
+  return state.graphColor === 'risk' ? riskColor(node.risk) : node.color;
+}
+
 function renderGraph(report) {
+  stopSignals();
   const svg = $('#graph');
   const { nodes, edges } = report.graph;
-  $('#graphMeta').textContent = `${nodes.length} archivo(s) · ${edges.length} conexión(es)${report.graph.truncated ? ' · grafo abreviado' : ''}`;
+  const wrap = svg.closest('.graph-wrap');
+
+  const signalRate = edges.length ? Math.max(1, Math.round(edges.length / 3)) : 0;
+  $('#graphMeta').textContent = nodes.length
+    ? `${nodes.length} neurona(s) · ${edges.length} sinapsis · ${state.flow ? `flujo activo (~${signalRate} señales simultáneas)` : 'flujo en pausa'}${report.graph.truncated ? ' · red abreviada' : ''}`
+    : 'Sin comunicación entre archivos: no hay imports internos que dibujar.';
 
   if (!nodes.length) {
     svg.innerHTML = '';
-    $('#graphMeta').textContent = 'Sin dependencias que dibujar (archivos sueltos).';
     renderLegend(report);
     return;
   }
 
-  const W = 900; const H = 430;
-  const { pos, links } = layoutGraph(nodes, edges, W, H);
+  const dense = nodes.length > 60;
+  const W = 900;
+  const H = nodes.length > 90 ? 560 : nodes.length > 50 ? 500 : 430;
+  svg.style.height = `${H}px`;
+  const radiusOf = (n) => {
+    const maxLoc = Math.max(...nodes.map((x) => x.loc), 1);
+    const base = dense ? 4 : 4.4;
+    const span = dense ? 10 : 12;
+    return base + Math.sqrt(n.loc / maxLoc) * span;
+  };
 
-  const maxLoc = Math.max(...nodes.map((n) => n.loc), 1);
-  const radiusOf = (n) => 4 + Math.sqrt(n.loc / maxLoc) * 13;
-  const labelNodes = new Set(
-    nodes.slice().sort((a, b) => (b.fanIn + b.loc / 50) - (a.fanIn + a.loc / 50)).slice(0, 16).map((n) => n.id),
-  );
+  const { pos, links } = layoutGraph(nodes, edges, W, H, radiusOf);
+  const haloScale = dense ? 2.15 : 2.7;
 
-  const edgeSvg = links.map((l) => {
-    const a = pos[l.s]; const b = pos[l.t];
+  // Etiquetas sólo para las neuronas más conectadas: la red se lee, no se amontona.
+  // Etiquetas sólo para las neuronas más conectadas, y sólo si no se pisan:
+  // así la red se lee sin convertirse en una nube de texto.
+  const labelInfo = new Map();
+  const placedLabels = [];
+  const maxLabels = nodes.length > 90 ? 14 : nodes.length > 50 ? 18 : 24;
+  const minGap = nodes.length > 90 ? 54 : 46;
+  const byImportance = nodes
+    .map((node, i) => ({ node, i }))
+    .sort((a, b) => (b.node.fanIn * 2 + b.node.fanOut + b.node.loc / 60)
+      - (a.node.fanIn * 2 + a.node.fanOut + a.node.loc / 60));
+
+  for (const { node, i } of byImportance) {
+    if (labelInfo.size >= maxLabels) break;
+    const p = pos[i];
+    if (placedLabels.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < minGap)) continue;
+    placedLabels.push(p);
+    const r = radiusOf(node);
+    const below = p.y < H - 44;
+    const anchor = p.x > W - 70 ? 'end' : p.x < 70 ? 'start' : 'middle';
+    const dx = anchor === 'end' ? -(r * 0.5) : anchor === 'start' ? r * 0.5 : 0;
+    labelInfo.set(node.id, {
+      y: (below ? r + 10.5 : -(r + 6)).toFixed(1),
+      x: dx.toFixed(1),
+      anchor,
+    });
+  }
+
+  // Un degradado por color: el halo de la neurona sin filtros caros.
+  const gradients = new Map();
+  const defs = [];
+  for (const node of nodes) {
+    const color = colorForNode(node);
+    if (gradients.has(color)) continue;
+    const id = `halo-${gradients.size}`;
+    gradients.set(color, id);
+    defs.push(`<radialGradient id="${id}">
+      <stop offset="0%" stop-color="${color}" stop-opacity="0.62"/>
+      <stop offset="55%" stop-color="${color}" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+    </radialGradient>`);
+  }
+
+  const edgesSvg = links.map((l, i) => {
+    const a = pos[l.s];
+    const b = pos[l.t];
+    const d = synapsePath(a, b, i);
     const cycle = nodes[l.s].inCycle && nodes[l.t].inCycle;
-    return `<line class="edge ${cycle ? 'is-cycle' : ''}" data-from="${esc(nodes[l.s].id)}" data-to="${esc(nodes[l.t].id)}"
-      x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}"/>`;
+    const dur = (2.1 + ((i * 7) % 21) / 10).toFixed(2);
+    const delay = (-((i * 13) % 45) / 10).toFixed(2);
+    const attrs = `data-from="${esc(nodes[l.s].id)}" data-to="${esc(nodes[l.t].id)}"`;
+    return `<path class="edge base" d="${d}" ${attrs}/>
+      <path class="edge signal ${cycle ? 'cycle' : ''}" d="${d}" ${attrs}
+        style="--dur:${dur}s;--delay:${delay}s"/>`;
   }).join('');
 
-  const nodeSvg = nodes.map((node, i) => {
+  const nodesSvg = nodes.map((node, i) => {
     const p = pos[i];
-    const color = state.graphColor === 'risk' ? riskColor(node.risk) : node.color;
+    const color = colorForNode(node);
     const r = radiusOf(node);
+    const gradient = gradients.get(color);
     return `<g class="node ${node.isEntry ? 'is-entry' : ''} ${node.inCycle ? 'is-cycle' : ''}"
-        data-id="${esc(node.id)}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})">
-      <circle r="${r.toFixed(1)}" fill="${color}" fill-opacity="0.88"/>
-      ${labelNodes.has(node.id) ? `<text y="${(r + 10).toFixed(1)}" text-anchor="middle">${esc(node.label)}</text>` : ''}
+        data-id="${esc(node.id)}" tabindex="0" role="button"
+        aria-label="${esc(node.label)}, riesgo ${node.risk}, ${node.fanIn} entradas y ${node.fanOut} salidas"
+        transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})">
+      <circle class="halo" r="${(r * haloScale).toFixed(1)}" fill="url(#${gradient})"
+        style="--breath:${(6.5 + (i % 7) * 0.8).toFixed(1)}s;--bdelay:-${((i * 1.7) % 7).toFixed(1)}s"/>
+      <circle class="ring" r="${(r + 3.4).toFixed(1)}" stroke="${color}"/>
+      <circle class="core" r="${r.toFixed(1)}" fill="${color}"/>
+      ${labelInfo.has(node.id) ? `<text x="${labelInfo.get(node.id).x}" y="${labelInfo.get(node.id).y}" text-anchor="${labelInfo.get(node.id).anchor}">${esc(node.label)}</text>` : ''}
     </g>`;
   }).join('');
 
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.innerHTML = `<g class="edges">${edgeSvg}</g><g class="nodes">${nodeSvg}</g>`;
+  svg.innerHTML = `<defs>${defs.join('')}</defs>
+    <g class="edges">${edgesSvg}</g>
+    <g class="nodes">${nodesSvg}</g>`;
 
+  wrap.classList.toggle('no-flow', !state.flow);
   renderLegend(report);
 
-  // interacción
-  const wrap = svg.closest('.graph-wrap');
   const tooltip = $('#tooltip');
-
-  const clearFocus = () => {
+  const clear = () => {
     wrap.classList.remove('is-focused');
-    $$('.node', svg).forEach((n) => n.classList.remove('is-hot'));
-    $$('.edge', svg).forEach((e) => e.classList.remove('is-hot'));
+    $$('.node', svg).forEach((el) => el.classList.remove('is-hot'));
+    $$('.edge', svg).forEach((el) => el.classList.remove('is-hot'));
     tooltip.hidden = true;
+  };
+
+  const focusNode = (id) => {
+    wrap.classList.add('is-focused');
+    const neighbors = new Set([id]);
+    $$('.edge', svg).forEach((el) => {
+      if (el.dataset.from === id || el.dataset.to === id) {
+        el.classList.add('is-hot');
+        neighbors.add(el.dataset.from);
+        neighbors.add(el.dataset.to);
+      }
+    });
+    $$('.node', svg).forEach((el) => { if (neighbors.has(el.dataset.id)) el.classList.add('is-hot'); });
+    return neighbors;
   };
 
   $$('.node', svg).forEach((g) => {
     const node = nodes.find((n) => n.id === g.dataset.id);
     g.addEventListener('mouseenter', (ev) => {
-      wrap.classList.add('is-focused');
-      g.classList.add('is-hot');
-      const neighbors = new Set([node.id]);
-      $$('.edge', svg).forEach((e) => {
-        if (e.dataset.from === node.id || e.dataset.to === node.id) {
-          e.classList.add('is-hot');
-          neighbors.add(e.dataset.from); neighbors.add(e.dataset.to);
-        }
-      });
-      $$('.node', svg).forEach((n) => { if (neighbors.has(n.dataset.id)) n.classList.add('is-hot'); });
+      focusNode(node.id);
       const rect = wrap.getBoundingClientRect();
       tooltip.hidden = false;
       tooltip.style.left = `${ev.clientX - rect.left}px`;
@@ -549,15 +689,101 @@ function renderGraph(report) {
         <div class="tt-meta">
           <span>riesgo <b style="color:${riskColor(node.risk)}">${node.risk}</b></span>
           <span>${fmt(node.loc)} LOC</span>
-          <span>${node.fanIn} entradas / ${node.fanOut} salidas</span>
+          <span>${node.fanIn + node.fanOut} sinapsis</span>
           ${node.inCycle ? '<span style="color:#ffa657">en ciclo</span>' : ''}
         </div>`;
     });
-    g.addEventListener('mouseleave', clearFocus);
-    g.addEventListener('click', () => openFile(node.id));
+    g.addEventListener('mouseleave', clear);
+    g.addEventListener('focus', () => focusNode(node.id));
+    g.addEventListener('blur', clear);
+    g.addEventListener('click', () => {
+      focusNode(node.id);
+      propagateSignal(svg, nodes, edges, node.id);
+      openFile(node.id);
+    });
+    g.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); g.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); }
+    });
   });
 
-  svg.addEventListener('mouseleave', clearFocus);
+  svg.addEventListener('mouseleave', clear);
+  startSignals(svg, nodes, edges);
+}
+
+/* --- actividad: la red "conversa" sola --- */
+
+function neuronsOf(svg) {
+  return Array.from(svg.querySelectorAll('.node'));
+}
+
+function fireNeuron(svg, id) {
+  const group = neuronsOf(svg).find((el) => el.dataset.id === id);
+  if (!group) return;
+  group.classList.add('is-firing');
+  $$('.edge', svg).forEach((el) => {
+    if (el.dataset.from === id || el.dataset.to === id) el.classList.add('signal-hot');
+  });
+  setTimeout(() => {
+    group.classList.remove('is-firing');
+    $$('.edge.signal-hot', svg).forEach((el) => el.classList.remove('signal-hot'));
+  }, 1000);
+}
+
+/** Una neurona dispara y la señal viaja a sus vecinas: se ve la conversación. */
+function propagateSignal(svg, nodes, edges, startId, depth = 2) {
+  if (!state.flow) return;
+  const adjacency = new Map();
+  for (const edge of edges) {
+    if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Set());
+    if (!adjacency.has(edge.target)) adjacency.set(edge.target, new Set());
+    adjacency.get(edge.source).add(edge.target);
+    adjacency.get(edge.target).add(edge.source);
+  }
+  let frontier = [startId];
+  const seen = new Set(frontier);
+  fireNeuron(svg, startId);
+  for (let level = 1; level <= depth; level++) {
+    const next = [];
+    for (const id of frontier) {
+      for (const neighbor of adjacency.get(id) || []) {
+        if (!seen.has(neighbor)) { seen.add(neighbor); next.push(neighbor); }
+      }
+    }
+    next.forEach((id, i) => setTimeout(() => fireNeuron(svg, id), level * 190 + i * 45));
+    frontier = next;
+  }
+}
+
+function startSignals(svg, nodes, edges) {
+  if (REDUCED_MOTION || !state.flow || nodes.length === 0) return;
+  const active = nodes.filter((n) => n.fanIn + n.fanOut > 0);
+  const pool = (active.length ? active : nodes).map((n) => n.id);
+  const adjacency = new Map();
+  for (const edge of edges) {
+    if (!adjacency.has(edge.source)) adjacency.set(edge.source, []);
+    if (!adjacency.has(edge.target)) adjacency.set(edge.target, []);
+    adjacency.get(edge.source).push(edge.target);
+    adjacency.get(edge.target).push(edge.source);
+  }
+
+  let cursor = 0;
+  state.fireTimer = setInterval(() => {
+    if (!svg.isConnected) { stopSignals(); return; }
+    cursor = (cursor + 1) % pool.length;
+    const id = pool[cursor];
+    fireNeuron(svg, id);
+    // De vez en cuando la señal salta a una vecina: parece una conversación.
+    if (Math.random() < 0.45) {
+      const neighbors = adjacency.get(id) || [];
+      const target = neighbors[Math.floor(Math.random() * neighbors.length)];
+      if (target) setTimeout(() => fireNeuron(svg, target), 260);
+    }
+  }, 900);
+}
+
+function stopSignals() {
+  clearInterval(state.fireTimer);
+  state.fireTimer = null;
 }
 
 function renderLegend(report) {
@@ -567,10 +793,12 @@ function renderLegend(report) {
       <div class="row"><span class="swatch" style="background:#5eead4"></span>riesgo bajo</div>
       <div class="row"><span class="swatch" style="background:#ffd166"></span>medio</div>
       <div class="row"><span class="swatch" style="background:#ff6b6b"></span>crítico</div>
-      <div class="row"><span class="swatch" style="background:none;border:1.5px solid #5eead4"></span>punto de entrada</div>`;
+      <div class="row"><span class="swatch" style="background:none;border:1.5px solid #5eead4"></span>punto de entrada</div>
+      <div class="row"><span class="swatch" style="background:linear-gradient(90deg,#5eead4,transparent);height:2px;border-radius:1px"></span>señal viajando</div>`;
   } else {
     const langs = (report.meta.languages || []).slice(0, 5);
-    legend.innerHTML = langs.map((l) => `<div class="row"><span class="swatch" style="background:${l.color}"></span>${esc(l.name)}</div>`).join('');
+    legend.innerHTML = langs.map((l) => `<div class="row"><span class="swatch" style="background:${l.color}"></span>${esc(l.name)}</div>`).join('')
+      + '<div class="row"><span class="swatch" style="background:linear-gradient(90deg,#5eead4,transparent);height:2px;border-radius:1px"></span>señal viajando</div>';
   }
 }
 
@@ -858,13 +1086,29 @@ function initEvents() {
     if (state.report) renderFindings(state.report);
   });
 
-  $$('.graph-controls .seg').forEach((seg) => {
+  $$('.graph-controls .seg[data-color]').forEach((seg) => {
     seg.addEventListener('click', () => {
-      $$('.graph-controls .seg').forEach((s) => s.classList.remove('is-active'));
+      $$('.graph-controls .seg[data-color]').forEach((s) => s.classList.remove('is-active'));
       seg.classList.add('is-active');
       state.graphColor = seg.dataset.color;
       if (state.report) renderGraph(state.report);
     });
+  });
+
+  $('#flowToggle').addEventListener('click', () => {
+    state.flow = !state.flow;
+    const btn = $('#flowToggle');
+    btn.classList.toggle('is-active', state.flow);
+    btn.setAttribute('aria-pressed', String(state.flow));
+    $('.graph-wrap').classList.toggle('no-flow', !state.flow);
+    if (!state.report) return;
+    const { nodes, edges } = state.report.graph;
+    const rate = Math.max(1, Math.round(edges.length / 3));
+    $('#graphMeta').textContent = nodes.length
+      ? `${nodes.length} neurona(s) · ${edges.length} sinapsis · ${state.flow ? `flujo activo (~${rate} señales simultáneas)` : 'flujo en pausa'}${state.report.graph.truncated ? ' · red abreviada' : ''}`
+      : 'Sin comunicación entre archivos: no hay imports internos que dibujar.';
+    if (state.flow) startSignals($('#graph'), nodes, edges);
+    else stopSignals();
   });
 
   $('#drawerClose').addEventListener('click', closeDrawer);
