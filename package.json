@@ -1,0 +1,27 @@
+{
+  "name": "vecinas",
+  "version": "1.0.0",
+  "description": "Analiza, visualiza y anticipa errores en el código de cualquier aplicación",
+  "type": "module",
+  "main": "server.js",
+  "bin": {
+    "vecinas": "./bin/vecinas.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js",
+    "analiza": "node bin/vecinas.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "analisis-estatico",
+    "calidad-de-codigo",
+    "dependencias",
+    "riesgo",
+    "visualizacion"
+  ],
+  "license": "MIT"
+}
