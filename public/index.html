@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vecinas · analiza y anticipa los errores de tu código</title>
+  <meta name="description" content="Vecinas lee el código de cualquier aplicación, dibuja cómo se conecta y señala dónde es más probable que falle." />
+  <meta name="theme-color" content="#070a0f" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23070a0f'/%3E%3Cpath d='M8 22V10l8 12V10l8 12' stroke='%235eead4' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Vecinas, inicio">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M7 23V9l9 14V9l9 14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-name">vecinas</span>
+      <span class="brand-tag">analiza · visualiza · anticipa</span>
+    </a>
+    <nav class="topnav">
+      <a href="#metodo">Cómo funciona</a>
+      <a href="#analisis">Análisis</a>
+      <a class="topnav-gh" href="https://github.com/donovan-hue/vecinas" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        GitHub
+      </a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ================= HERO + ENTRADA ================= -->
+    <section class="hero">
+      <p class="eyebrow">observatorio de código</p>
+      <h1>Ve cómo trabaja tu código<br /><span class="hl">antes de que falle.</span></h1>
+      <p class="lede">
+        Vecinas lee el código de cualquier aplicación, dibuja cómo se conectan sus archivos y
+        marca los puntos donde un error es más probable. Nada se ejecuta: sólo se lee.
+      </p>
+
+      <div class="loader" id="loader">
+        <div class="tabs" role="tablist" aria-label="Origen del código">
+          <button class="tab is-active" role="tab" aria-selected="true" data-tab="github">Repositorio de GitHub</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="files">Subir archivos</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="paste">Pegar código</button>
+        </div>
+
+        <div class="panel is-active" data-panel="github">
+          <div class="field-row">
+            <input id="repoInput" type="text" spellcheck="false" autocomplete="off"
+              placeholder="https://github.com/usuario/repositorio"
+              aria-label="URL del repositorio de GitHub" />
+            <button class="btn btn-primary" id="repoBtn">Analizar</button>
+          </div>
+          <div class="quick">
+            <span>Prueba con:</span>
+            <button class="chip-quick" data-repo="expressjs/express">expressjs/express</button>
+            <button class="chip-quick" data-repo="pallets/flask">pallets/flask</button>
+            <button class="chip-quick" data-repo="sindresorhus/slugify">sindresorhus/slugify</button>
+          </div>
+        </div>
+
+        <div class="panel" data-panel="files">
+          <div class="dropzone" id="dropzone" tabindex="0" role="button"
+            aria-label="Elegir carpeta o archivos para analizar">
+            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M12 16V4m0 0L7 9m5-5 5 5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" stroke-linecap="round"/>
+            </svg>
+            <p><strong>Arrastra una carpeta o archivos</strong> aquí, o haz clic para elegirlos</p>
+            <p class="muted small">Se analizan hasta 400 archivos de código · límite 512 KB por archivo</p>
+            <input type="file" id="fileInput" multiple hidden />
+            <input type="file" id="dirInput" webkitdirectory directory multiple hidden />
+          </div>
+          <div class="dropzone-actions">
+            <button class="btn btn-ghost" id="pickFiles">Elegir archivos</button>
+            <button class="btn btn-ghost" id="pickDir">Elegir carpeta</button>
+          </div>
+          <ul class="picked-files" id="pickedFiles" hidden></ul>
+        </div>
+
+        <div class="panel" data-panel="paste">
+          <div class="field-row">
+            <input id="pasteName" type="text" spellcheck="false" placeholder="nombre del archivo (ej. app.ts)" aria-label="Nombre del archivo" />
+          </div>
+          <textarea id="pasteCode" spellcheck="false" placeholder="Pega aquí un archivo suelto (JavaScript, TypeScript, Python, Go, Java, SQL…)" aria-label="Código a analizar"></textarea>
+          <div class="field-row end">
+            <span class="muted small">Útil para revisar un fragmento antes de subirlo.</span>
+            <button class="btn btn-primary" id="pasteBtn">Analizar fragmento</button>
+          </div>
+        </div>
+
+        <div class="loader-foot">
+          <span class="muted small">Sin cuenta, sin ejecutar tu código.</span>
+          <button class="link-btn" id="sampleBtn">o analiza el proyecto de ejemplo →</button>
+        </div>
+      </div>
+
+      <div class="progress" id="progress" hidden>
+        <div class="progress-head">
+          <span class="spinner" aria-hidden="true"></span>
+          <strong id="progressTitle">Analizando…</strong>
+        </div>
+        <ol class="steps" id="steps">
+          <li data-step="descarga">Reuniendo archivos</li>
+          <li data-step="lectura">Leyendo y enmascarando código</li>
+          <li data-step="metricas">Midiendo funciones y complejidad</li>
+          <li data-step="grafo">Tejiendo el grafo de dependencias</li>
+          <li data-step="reglas">Buscando señales de error</li>
+          <li data-step="riesgo">Estimando riesgo por archivo</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ================= RESULTADOS ================= -->
+    <section id="analisis" class="results" hidden>
+      <div class="results-head">
+        <div>
+          <p class="eyebrow" id="srcLabel">análisis</p>
+          <h2 id="projectTitle">Proyecto</h2>
+          <p class="muted" id="projectMeta"></p>
+        </div>
+        <div class="results-actions">
+          <button class="btn btn-ghost" id="againBtn">Analizar otro</button>
+          <button class="btn btn-ghost" id="jsonBtn">Descargar JSON</button>
+        </div>
+      </div>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="insights-block">
+        <h3 class="section-title">Lo que anticipamos</h3>
+        <div class="insights" id="insights"></div>
+      </div>
+
+      <div class="split">
+        <div class="card graph-card">
+          <div class="card-head">
+            <div>
+              <h3>Mapa de dependencias</h3>
+              <p class="muted small" id="graphMeta"></p>
+            </div>
+            <div class="graph-controls">
+              <button class="seg is-active" data-color="risk">Riesgo</button>
+              <button class="seg" data-color="lang">Lenguaje</button>
+            </div>
+          </div>
+          <div class="graph-wrap">
+            <svg id="graph" role="img" aria-label="Grafo de dependencias entre archivos"></svg>
+            <div class="tooltip" id="tooltip" hidden></div>
+            <div class="legend" id="legend"></div>
+          </div>
+        </div>
+
+        <div class="card risk-card">
+          <div class="card-head"><div><h3>Dónde va a doler</h3><p class="muted small">Archivos ordenados por riesgo estimado</p></div></div>
+          <ol class="risk-list" id="riskList"></ol>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div><h3>Hallazgos</h3><p class="muted small" id="findingsMeta"></p></div>
+          <div class="finding-filters">
+            <input id="searchFindings" type="search" placeholder="Buscar archivo, regla…" aria-label="Buscar hallazgos" />
+          </div>
+        </div>
+        <div class="sev-chips" id="sevChips"></div>
+        <div class="findings" id="findings"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><div><h3>Archivos</h3><p class="muted small">Clic en cualquiera para ver su ficha</p></div></div>
+          <div class="table-wrap">
+            <table class="file-table">
+              <thead>
+                <tr><th>Archivo</th><th>LOC</th><th>Compl.</th><th>Hallazgos</th><th>Riesgo</th></tr>
+              </thead>
+              <tbody id="fileRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="stack-col">
+          <div class="card">
+            <div class="card-head"><div><h3>Composición</h3><p class="muted small">Lenguajes por líneas de código</p></div></div>
+            <div class="lang-bars" id="langBars"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h3>Stack detectado</h3><p class="muted small">Según archivos y manifiestos</p></div></div>
+            <div class="stack-chips" id="stackChips"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><div><h3>Riesgos estructurales</h3><p class="muted small">Ciclos, duplicación y acoplamiento</p></div></div>
+          <div id="structure"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div><h3>Dependencias externas</h3><p class="muted small">Paquetes que entran al proyecto</p></div></div>
+          <div class="deps" id="deps"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= MÉTODO ================= -->
+    <section class="method" id="metodo">
+      <h2 class="section-title">Cómo lee Vecinas</h2>
+      <div class="method-grid">
+        <article>
+          <span class="num">01</span>
+          <h3>Recibe el código</h3>
+          <p>Un repositorio de GitHub, una carpeta o un archivo pegado. Nada se ejecuta y nada se instala: el código se trata como texto.</p>
+        </article>
+        <article>
+          <span class="num">02</span>
+          <h3>Mide la estructura</h3>
+          <p>Cuenta líneas, funciones, clases, anidamiento y caminos posibles (complejidad). Es el equivalente a una radiografía: forma sin juicio.</p>
+        </article>
+        <article>
+          <span class="num">03</span>
+          <h3>Teje las dependencias</h3>
+          <p>Resuelve cada import a un archivo real y dibuja el grafo. Ahí aparecen ciclos, nodos centrales y código que nadie llama.</p>
+        </article>
+        <article>
+          <span class="num">04</span>
+          <h3>Anticipa el error</h3>
+          <p>Aplica reglas de riesgo (errores silenciados, inyección, secretos, comparaciones laxas) y pondera cada archivo por exposición.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div>
+      <strong>vecinas</strong> · analiza, visualiza y anticipa
+    </div>
+    <p class="muted small">Los informes se generan en el servidor y no se guardan. Tus archivos no salen de aquí.</p>
+  </footer>
+
+  <!-- Ficha de archivo -->
+  <aside class="drawer" id="drawer" hidden aria-label="Ficha del archivo">
+    <div class="drawer-head">
+      <div>
+        <p class="eyebrow" id="drawerLang">archivo</p>
+        <h3 id="drawerTitle">—</h3>
+      </div>
+      <button class="icon-btn" id="drawerClose" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="drawer-body" id="drawerBody"></div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
